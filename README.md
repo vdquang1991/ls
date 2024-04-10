@@ -1,6 +1,6 @@
 # Learning and Swapping: A Selective Mutual Learning-based Semi-Supervised Approach for Action Recognition
 
-By Duc-Quang Vu, Trang Phung, Jia-Ching Wang, Ngan Le
+By Duc-Quang Vu, Trang Phung, Ngan Le, Jia-Ching Wang, Son T. Mai
 
 ## Overview
 
