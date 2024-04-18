@@ -76,7 +76,7 @@ For example: `Labeled_fraction=0.1` i.e., 10% data of the training set is used f
 - UCF-101: contains 101 different action categories with 13,320 videos. Link: https://www.crcv.ucf.edu/data/UCF101.php
 - HMDB-51: contains 6,766 videos distributed in 51 human action classes. Link: https://serre-lab.clps.brown.edu/resource/hmdb-a-large-human-motion-database/#dataset
 - Kinetics: contains 306K 10-second videos in 400 action classes. Link: https://deepmind.com/research/open-source/kinetics
-- Mini-Something V2 (TODO): 81,000 training videos and more than 12,000 testing videos across 87 action classes. Link: https://developer.qualcomm.com/software/ai-datasets/something-something
+- Mini-Something V2 (TODO): 81K training videos and 12K testing videos across 87 action classes. Link: https://developer.qualcomm.com/software/ai-datasets/something-something
 - Jester (TODO): contains 119K videos across 27 annotated classes. Link: https://20bn.com/datasets/jester/v1
 
 
