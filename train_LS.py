@@ -21,12 +21,13 @@ from call_back_semi import EpochCheckpoint, ModelCheckpoint_and_Reduce_LR, Switc
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description='Training Teacher self-supervised learning')
+    parser = argparse.ArgumentParser(description='Learning and Swapping: A Novel Semi-Supervised Approach for Action Recognition via Selective Mutual Learning ')
     parser.add_argument('--model', type=str, default='res18', help='res18/res34/res50/res101/res152')
-    parser.add_argument('--clip_len', type=int, default=8, help='clip length')
+    parser.add_argument('--clip_len', type=int, default=16, help='clip length')
     parser.add_argument('--crop_size', type=int, default=224, help='crop size')
+    parser.add_argument('--dataset', type=str, default='ucf101', help='ucf101/hmdb51/kinetics100/kinetics400/minisomething')
     parser.add_argument('--percent', type=int, default=5, help='percent of labeled data')
-    parser.add_argument('--switch', type=int, default=10, help='switch value')
+    parser.add_argument('--switch', type=int, default=10, help='swap value')
     parser.add_argument('--gpu', type=str, default='0', help='GPU id')
     parser.add_argument('--lr', type=float, default=0.01, help='learning rate')
     parser.add_argument('--confidence', type=float, default=0.8, help='confidence factor')
@@ -293,7 +294,7 @@ def main():
         train_labeled_dataset = get_data('train_labeled_60percent.csv')
         train_unlabeled_dataset = get_data('train_unlabeled_60percent.csv')
 
-    test_dataset = get_data('val.csv')
+    test_dataset = get_data('test.csv')
     classes_list = get_classes(train_labeled_dataset)
     print('Number of classes:', len(classes_list))
     print('Train labeled set:', len(train_labeled_dataset))
