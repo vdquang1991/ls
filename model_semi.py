@@ -1,7 +1,3 @@
-"""A vanilla 3D resnet implementation.
-Based on Raghavendra Kotikalapudi's 2D implementation
-keras-resnet (See https://github.com/raghakot/keras-resnet.)
-"""
 from __future__ import (
     absolute_import,
     division,

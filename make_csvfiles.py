@@ -5,6 +5,7 @@ def get_classes_name(root_path):
     classes = sorted(os.listdir(root_path))
     return classes
 
+
 def get_data(root_path, classes):
     data = []
     for c in classes:
@@ -14,6 +15,7 @@ def get_data(root_path, classes):
             # label_encoded = classes.index(c)
             data.append([root_path, c, f, length_file])
     return data
+
 
 if os.path.exists('train'):
     root_path = 'train'

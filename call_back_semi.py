@@ -6,6 +6,7 @@ import tensorflow.keras.backend as K
 from tensorflow.keras.callbacks import Callback
 from tensorflow.keras.callbacks import BaseLogger
 
+
 def decay(epoch, lr_init):
     if epoch < 40:
         return lr_init

@@ -3,6 +3,7 @@ import csv
 import random
 from sklearn.model_selection import train_test_split
 
+
 Labeled_fraction = 0.1
 
 def get_data(csv_file):

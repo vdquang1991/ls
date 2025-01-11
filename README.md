@@ -1,6 +1,6 @@
 # Learning and Swapping: A Selective Mutual Learning-based Semi-Supervised Approach for Action Recognition
 
-By Duc-Quang Vu, Trang Phung, Ngan Le, Jia-Ching Wang, Son T. Mai
+By Duc-Quang Vu, Trang Phung, Jia-Ching Wang, Ngan Le
 
 ## Overview
 
@@ -16,6 +16,7 @@ By Duc-Quang Vu, Trang Phung, Ngan Le, Jia-Ching Wang, Son T. Mai
 - numpy 
 - Pillow
 - opencv
+- matplotlib
 - ...
 
 ### Training
@@ -75,9 +76,8 @@ For example: `Labeled_fraction=0.1` i.e., 10% data of the training set is used f
 
 - UCF-101: contains 101 different action categories with 13,320 videos. Link: https://www.crcv.ucf.edu/data/UCF101.php
 - HMDB-51: contains 6,766 videos distributed in 51 human action classes. Link: https://serre-lab.clps.brown.edu/resource/hmdb-a-large-human-motion-database/#dataset
+- Jester: contains 119K videos across 27 annotated classes. Link: https://20bn.com/datasets/jester/v1
 - Kinetics: contains 306K 10-second videos in 400 action classes. Link: https://deepmind.com/research/open-source/kinetics
-- Mini-Something V2 (TODO): 81K training videos and 12K testing videos across 87 action classes. Link: https://developer.qualcomm.com/software/ai-datasets/something-something
-- Jester (TODO): contains 119K videos across 27 annotated classes. Link: https://20bn.com/datasets/jester/v1
 
 
 ## Citation

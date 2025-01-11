@@ -9,24 +9,29 @@ import tensorflow as tf
 import tensorflow.keras.backend as K
 from tensorflow.keras import Model
 from tensorflow.keras.optimizers import SGD
-from tensorflow.keras.losses import CategoricalCrossentropy
+from tensorflow.keras.losses import KLDivergence, CategoricalCrossentropy
 from tensorflow.keras.metrics import CategoricalAccuracy
 from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau
+from tensorflow.keras.callbacks import Callback
+from tensorflow.keras.callbacks import BaseLogger
 
 from model_semi import build_resnet_18, build_resnet_34, build_resnet_50, build_resnet_101, build_resnet_152
 from data_util import generator_labeled_data_one_clip, generator_unlabeled_data_for_swap_learning, generator_test_data, get_data, get_classes, clean_data
 from data_util import data_augmentation_labeled_one_clip, data_augmentation_unlabeled_swap_learning
+# from data_util import EpochCheckpoint, ModelCheckpoint
 
-from call_back_semi import EpochCheckpoint, ModelCheckpoint_and_Reduce_LR, Switch_Models, Checkpoint_ReduceLR_SwapModel
+from sklearn.model_selection import train_test_split
+from call_back_semi import EpochCheckpoint, ModelCheckpoint_and_Reduce_LR, Switch_Models
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description='Training Teacher self-supervised learning')
-    parser.add_argument('--model', type=str, default='res18', help='resnet18/resnet34/resnet50/resnet101/resnet152')
-    parser.add_argument('--clip_len', type=int, default=8, help='clip length')
+    parser = argparse.ArgumentParser(description='Training semi-supervised learning')
+    parser.add_argument('--model', type=str, default='res18', help='res18/res34/res50/res101/res152')
+    parser.add_argument('--clip_len', type=int, default=16, help='clip length')
     parser.add_argument('--crop_size', type=int, default=224, help='crop size')
+    parser.add_argument('--dataset', type=str, default='ucf101', help='ucf101/hmdb51/kinetics100/kinetics400/minisomething')
     parser.add_argument('--percent', type=int, default=5, help='percent of labeled data')
-    parser.add_argument('--switch', type=int, default=10, help='switch value')
+    parser.add_argument('--switch', type=int, default=10, help='swap value')
     parser.add_argument('--gpu', type=str, default='0', help='GPU id')
     parser.add_argument('--lr', type=float, default=0.01, help='learning rate')
     parser.add_argument('--confidence', type=float, default=0.8, help='confidence factor')
@@ -73,6 +78,7 @@ class Semi_Model(Model):
             # Compute loss for label data
             ce_loss_s1 = self.ce_loss(y, tf.nn.softmax(z_labeled_s1, axis=1))
 
+            # loss_s1 = ce_loss_labeled_s1 + self.lamda * ce_loss_unlabeled_s1 + (1 - self.lamda) * kld_loss_unlabeld_s1
             loss_s1 = ce_loss_s1
             loss_s1 += sum(self.student_1.losses)
 
@@ -158,19 +164,21 @@ def build_model(model_name, input_shape, num_classes, reg_factor=1e-4, activatio
     return model
 
 
-def build_callbacks_new(save_path, every, startAt, monitor='val_accuracy', mode='max',
-                    lr_init=0.01, num_epoch_switch=10, extend_epoch_swap=0):
-    earlyStopping = EarlyStopping(monitor=monitor, patience=150, verbose=1)
+def build_callbacks_new(save_path, every, startAt, train_dataset, monitor='val_accuracy', mode='max', confidence=0.7,
+                    lr_init=0.01, batch_size=16, epochs=200, warmup_epoch=10, num_epoch_switch=1):
+    earlyStopping = EarlyStopping(monitor=monitor, patience=40, verbose=1)
 
     checkpoint_path = os.path.join(save_path, 'checkpoints')
     epoch_checkpoint = EpochCheckpoint(outputPath=checkpoint_path, every=every, startAt=startAt)
 
     jsonName = 'log_results.json'
     jsonPath = os.path.join(save_path, "output")
-    cp_reduceLR_swap = Checkpoint_ReduceLR_SwapModel(folderpath=save_path, jsonPath=jsonPath, jsonName=jsonName, startAt=startAt,
-                                                     lr_init=lr_init, monitor=monitor, mode=mode, factor=0.1, patience=40,
-                                                     num_epoch_swap=num_epoch_switch, extend_epoch_swap=extend_epoch_swap, verbose=1)
-    cb = [earlyStopping, epoch_checkpoint, cp_reduceLR_swap]
+    Checkpoint_LR = ModelCheckpoint_and_Reduce_LR(folderpath=save_path, jsonPath=jsonPath, jsonName=jsonName, startAt=startAt,
+                                               lr_init=lr_init, monitor=monitor, mode=mode, factor=0.1, patience=20,
+                                               verbose=1)
+
+    switch_models = Switch_Models(num_epoch_switch=num_epoch_switch, startAt=startAt, verbose=1)
+    cb = [earlyStopping, epoch_checkpoint, Checkpoint_LR, switch_models]
 
     return cb
 
@@ -180,33 +188,33 @@ def train_semi(train_labeled_dataset, train_unlabeled_dataset, test_dataset, mod
                start_epoch=1, save_path='save_model', every=1, num_epoch_switch=1):
 
     # Prepare data for training phase
-    batch_factor = 3
     AUTOTUNE = tf.data.experimental.AUTOTUNE
-    # AUTOTUNE = 2
     ds_labeled = tf.data.Dataset.from_generator(generator_labeled_data_one_clip,
                                                 (tf.float32, tf.float32),
                                                 (tf.TensorShape(input_shape), tf.TensorShape([len(classes_list)])),
                                                 args=[train_labeled_dataset, classes_list, input_shape[0], input_shape[1]])
     ds_labeled = ds_labeled.map(data_augmentation_labeled_one_clip, num_parallel_calls=AUTOTUNE).prefetch(AUTOTUNE).batch(batch_size)
-
+    # ds_labeled = ds_labeled.batch(batch_size//3).prefetch(tf.data.experimental.AUTOTUNE)
 
     ds_unlabeled = tf.data.Dataset.from_generator(generator_unlabeled_data_for_swap_learning,
                                                   (tf.float32, tf.float32),
                                                 (tf.TensorShape(input_shape), tf.TensorShape(input_shape)),
                                                 args=[train_unlabeled_dataset, classes_list, input_shape[0], input_shape[1]])
-    ds_unlabeled = ds_unlabeled.map(data_augmentation_unlabeled_swap_learning, num_parallel_calls=AUTOTUNE).prefetch(AUTOTUNE).batch(batch_size*batch_factor)
+    ds_unlabeled = ds_unlabeled.map(data_augmentation_unlabeled_swap_learning, num_parallel_calls=AUTOTUNE).prefetch(AUTOTUNE).batch(batch_size*3)
+    # ds_unlabeled = ds_unlabeled.batch(batch_size).prefetch(tf.data.experimental.AUTOTUNE)
     ds_train = tf.data.Dataset.zip((ds_labeled, ds_unlabeled))
+
 
     ds_test = tf.data.Dataset.from_generator(generator_test_data, (tf.float32, tf.float32),
                                                (tf.TensorShape(input_shape), tf.TensorShape([len(classes_list)])),
                                                args=[test_dataset, classes_list, input_shape[0], input_shape[1]])
-    ds_test = ds_test.prefetch(AUTOTUNE).batch(batch_size*batch_factor)
+    ds_test = ds_test.prefetch(AUTOTUNE).batch(batch_size)
 
     # Build model
     student_1 = build_model(model_name, input_shape, len(classes_list), reg_factor=reg_factor, activation=None, drop_rate=drop_rate)
     student_2 = build_model(model_name, input_shape, len(classes_list), reg_factor=reg_factor, activation=None, drop_rate=drop_rate)
 
-    student_1.summary(line_length=150)
+    # student_1.summary(line_length=150)
 
     # Load weight for student model
     if start_epoch > 1:
@@ -219,8 +227,9 @@ def train_semi(train_labeled_dataset, train_unlabeled_dataset, test_dataset, mod
 
 
     # Build callbacks
-    callback = build_callbacks_new(save_path, every=every, startAt=start_epoch, monitor='val_accuracy', mode='max', lr_init=lr_init,
-                               num_epoch_switch=num_epoch_switch, extend_epoch_swap=0)
+    callback = build_callbacks_new(save_path, every=every, startAt=start_epoch, train_dataset=train_unlabeled_dataset,
+                               monitor='val_accuracy', mode='max', lr_init=lr_init, batch_size=batch_size, confidence=confidence,
+                               epochs=epochs, warmup_epoch=10, num_epoch_switch=num_epoch_switch)
 
     # Build optimizer and loss function
     optimizer = SGD(learning_rate=lr_init, momentum=0.9, nesterov=True)
@@ -236,9 +245,9 @@ def train_semi(train_labeled_dataset, train_unlabeled_dataset, test_dataset, mod
 
     # Training
     Model.fit(ds_train, epochs=epochs - start_epoch + 1, verbose=1,
-              steps_per_epoch=(len(train_unlabeled_dataset) // (batch_size * batch_factor) + len(train_labeled_dataset) // batch_size),
+              steps_per_epoch=len(train_unlabeled_dataset) // (batch_size),
               validation_data=ds_test,
-              validation_steps=len(test_dataset) // (batch_size * batch_factor),
+              validation_steps=len(test_dataset) // (batch_size),
               callbacks=callback
               )
 
@@ -265,34 +274,31 @@ def main():
 
     # Read dataset
     if percent==1:
-        save_path = './save_model/swap_semi_1percent_switch_%03d_confidence_%03d/'%(num_epoch_switch, int(confidence * 100))
+        save_path = './save_model/swap_semi_1percent/'
+        # train_labeled_dataset = get_data('mini_Kinetics_100_train_labeled_1percent.csv')
+        # train_unlabeled_dataset = get_data('mini_Kinetics_100_train_unlabeled_1percent.csv')
         train_labeled_dataset = get_data('train_labeled_1percent.csv')
         train_unlabeled_dataset = get_data('train_unlabeled_1percent.csv')
     elif percent==5:
-        save_path = './save_model/swap_semi_5percent_switch_%03d_confidence_%03d/'%(num_epoch_switch, int(confidence * 100))
+        save_path = './save_model/swap_semi_5percent/'
+        # train_labeled_dataset = get_data('mini_Kinetics_100_train_labeled_5percent.csv')
+        # train_unlabeled_dataset = get_data('mini_Kinetics_100_train_unlabeled_5percent.csv')
         train_labeled_dataset = get_data('train_labeled_5percent.csv')
         train_unlabeled_dataset = get_data('train_unlabeled_5percent.csv')
     elif percent==10:
-        # save_path = './save_model/swap_semi_10percent/'
-        save_path = './save_model/swap_semi_10percent_switch_%03d_confidence_%03d/'%(num_epoch_switch, int(confidence * 100))
+        save_path = './save_model/swap_semi_10percent/'
+        # train_labeled_dataset = get_data('mini_Kinetics_100_train_labeled_10percent.csv')
+        # train_unlabeled_dataset = get_data('mini_Kinetics_100_train_unlabeled_10percent.csv')
         train_labeled_dataset = get_data('train_labeled_10percent.csv')
         train_unlabeled_dataset = get_data('train_unlabeled_10percent.csv')
     elif percent==20:
         save_path = './save_model/swap_semi_20percent/'
         train_labeled_dataset = get_data('train_labeled_20percent.csv')
         train_unlabeled_dataset = get_data('train_unlabeled_20percent.csv')
-    elif percent==40:
-        save_path = './save_model/swap_semi_40percent/'
-        train_labeled_dataset = get_data('train_labeled_40percent.csv')
-        train_unlabeled_dataset = get_data('train_unlabeled_40percent.csv')
-    elif percent==50:
+    else:
         save_path = './save_model/swap_semi_50percent/'
         train_labeled_dataset = get_data('train_labeled_50percent.csv')
         train_unlabeled_dataset = get_data('train_unlabeled_50percent.csv')
-    else:
-        save_path = './save_model/swap_semi_60percent/'
-        train_labeled_dataset = get_data('train_labeled_60percent.csv')
-        train_unlabeled_dataset = get_data('train_unlabeled_60percent.csv')
 
     # test_dataset = get_data('mini_Kinetics_100_test.csv')
     test_dataset = get_data('test.csv')
@@ -323,11 +329,10 @@ def main():
     f.write('Drop rate: ' + str(drop_rate) + '\n')
     f.write('Percent: ' + str(percent) + '\n')
     f.write('confidence: ' + str(confidence) + '\n')
-
     f.close()
 
-    train_labeled_dataset = clean_data(train_labeled_dataset, input_shape[0] + 1, classes=classes_list, MAX_FRAMES=3000)
-    train_unlabeled_dataset = clean_data(train_unlabeled_dataset, input_shape[0] + 1, classes=None, MAX_FRAMES=3000)
+    train_labeled_dataset = clean_data(train_labeled_dataset, input_shape[0] * 2 + 2, classes=classes_list, MAX_FRAMES=3000)
+    train_unlabeled_dataset = clean_data(train_unlabeled_dataset, input_shape[0] * 2 + 2, classes=None, MAX_FRAMES=3000)
     test_dataset = clean_data(test_dataset, input_shape[0] + 1, classes=classes_list, MAX_FRAMES=3000)
     random.shuffle(test_dataset)
     random.shuffle(train_labeled_dataset)
@@ -335,6 +340,16 @@ def main():
     print('Train labeled set after clean:', len(train_labeled_dataset))
     print('Train unlabled set after clean:', len(train_unlabeled_dataset))
     print('Test set after clean:', len(test_dataset))
+
+
+    # _, test_dataset_small = train_test_split(test_dataset, test_size=0.1)
+    # test_dataset = test_dataset_small
+    # print('Sub Test set after clean:', len(test_dataset))
+
+    # train_labeled_dataset = train_labeled_dataset[:1000]
+    # train_unlabeled_dataset = train_unlabeled_dataset[:1000]
+    # test_dataset = test_dataset[:100]
+
 
     # --------------------------------------Continuous training ----------------------------------------
     train_semi(train_labeled_dataset, train_unlabeled_dataset, test_dataset, model_name, classes_list, input_shape, lr_init,

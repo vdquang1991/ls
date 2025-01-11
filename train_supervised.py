@@ -17,16 +17,19 @@ from model_semi import build_resnet_18, build_resnet_34, build_resnet_50, build_
 from data_util import get_data, get_classes, clean_data, generator_labeled_data_one_clip, data_augmentation_labeled_one_clip, generator_test_data
 
 def parse_args():
-    parser = argparse.ArgumentParser(description='Training Teacher self-supervised learning')
-    parser.add_argument('--model', type=str, default='res18', help='resnet18/resnet34/resnet50/resnet101/resnet152')
-    parser.add_argument('--clip_len', type=int, default=8, help='clip length')
+    parser = argparse.ArgumentParser(description='Semi-supervised learning')
+    parser.add_argument('--model', type=str, default='res18', help='res18/res34/res50/res101/res152')
+    parser.add_argument('--clip_len', type=int, default=16, help='clip length')
     parser.add_argument('--crop_size', type=int, default=224, help='crop size')
+    parser.add_argument('--dataset', type=str, default='ucf101', help='ucf101/hmdb51/kinetics100/kinetics400/minisomething')
     parser.add_argument('--percent', type=int, default=5, help='percent of labeled data')
+    parser.add_argument('--switch', type=int, default=10, help='swap value')
     parser.add_argument('--gpu', type=str, default='0', help='GPU id')
     parser.add_argument('--lr', type=float, default=0.01, help='learning rate')
+    parser.add_argument('--confidence', type=float, default=0.8, help='confidence factor')
     parser.add_argument('--drop_rate', type=float, default=0.5, help='drop rate')
     parser.add_argument('--reg_factor', type=float, default=5e-4, help='weight decay')
-    parser.add_argument('--epochs', type=int, default=200, help='number of total epochs to run')
+    parser.add_argument('--epochs', type=int, default=500, help='number of total epochs to run')
     parser.add_argument('--batch_size', type=int, default=16, help='mini-batch size')
     parser.add_argument('--start_epoch', type=int, default=1, help='manual epoch number (useful on restarts)')
     args = parser.parse_args()
@@ -95,7 +98,7 @@ def training_supervised(train_dataset, test_dataset, model_name, input_shape, cl
 
     loss = CategoricalCrossentropy()
     model.compile(optimizer=sgd, loss=loss, metrics=['accuracy'])
-    model.fit(data_train, epochs=epochs - start_epoch + 1, verbose=1, steps_per_epoch= len(train_dataset * 4)//batch_size,
+    model.fit(data_train, epochs=epochs - start_epoch + 1, verbose=1, steps_per_epoch= len(train_dataset)//batch_size,
                    validation_data=data_test, validation_steps=len(test_dataset)//batch_size,
                    callbacks=cb)
 
